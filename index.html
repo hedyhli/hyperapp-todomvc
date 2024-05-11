@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hyperapp • TodoMVC</title>
+    <link rel="stylesheet" href="node_modules/todomvc-common/base.css">
+    <link rel="stylesheet" href="node_modules/todomvc-app-css/index.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+    import { h, text, app } from 'https://cdn.skypack.dev/hyperapp'
+
+    // Utils
+    const ENTER_KEY = 13, ESCAPE_KEY = 27, FILTER = { All: 0, Active: 1, Completed: 2 },
+    uuid = () => (
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0,
+        v = c == 'x' ? r : (r & 0x3) | 0x8
+        return v.toString(16)
+      })
+    ),
+    assignTodoById = (todos, id, ...todo) => {
+      let todoItem = todo[0]
+      return todos.map((t) => (id === t.id ? Object.assign({}, t, todoItem) : t))
+    },
+    STORAGE_KEY = 'todos-hyperapp',
+    store = {
+      fetch: () => JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'),
+      save: (state) => {localStorage.setItem(STORAGE_KEY, JSON.stringify(state.todos)); return state},
+    };
+
+    // Methods
+    const createTodo = (state, event) => store.save({
+      ...state,
+      input: '',
+      todos: [...state.todos, {
+        id: uuid(),
+        done: false,
+        editing: false,
+        value: event.target.value,
+      }]
+    }),
+    toggleAllTodo = (state, e) => store.save({
+      ...state, todos: state.todos.map((t) => ({ ...t, done: !e.target.previousSibling.checked }))
+    }),
+    clearCompleted = (state) => store.save({
+      ...state, todos: state.todos.filter((t) => !t.done)
+    }),
+    filterTodo = (state, filter) => ({...state, filter}),
+    removeTodo = (state, uuid) => store.save({
+      ...state, todos: state.todos.filter((t) => uuid !== t.id)
+    }),
+    toggleTodo = (state, uuid) => store.save({
+      ...state, todos: state.todos.map((t) => (uuid === t.id ? Object.assign({}, t, { done: !t.done }) : t))
+    }),
+    editEnterTodo = (state, e, uuid) => {
+      const input = e.target.parentNode.parentNode.querySelector('.edit')
+      input.focus()
+      const todos = assignTodoById(state.todos, uuid, { editing: true })
+      return store.save({ ...state, todos })
+    },
+    editUpdateTodo = (state, e, uuid) => {
+      e.target.blur()
+      const todos = assignTodoById(state.todos, uuid, {
+        editing: false,
+        value: e.target.value,
+      })
+      return store.save({ ...state, todos })
+    };
+
+    // Components
+    const TodoInput = (state) => (
+    h('div', {}, [
+      h('input', { type: 'text', class: 'new-todo',
+          onkeydown: (state, event) => {
+            if (event.keyCode === ENTER_KEY && event.target.value !== '') {
+              return createTodo(state, event)
+            }
+            if (event.keyCode === ESCAPE_KEY) {
+              event.target.blur()
+            }
+            return state
+          },
+          oninput: (state, event) => {
+            const input = event.target.value
+            const newState = { ...state, input }
+            return newState
+          },
+          value: state.input,
+          placeholder: state.placeholder,
+        }),
+      ])
+    ),
+    TodoToggleAll = () => (
+      h('div', {}, [
+        h('input', { type: 'checkbox', class: 'toggle-all', id: 'toggle-all' }),
+        h('label', { for: 'toggle-all', onclick: (state, e) => toggleAllTodo(state, e) }, text('Mark all as complete')),
+      ])
+    ),
+    TodoCount = (todos) => {
+      const n = todos.filter((t) => !t.done).length
+      if (n === 1) {
+        return h('span', { class: 'todo-count' }, text(`1 item left`))
+      } else {
+        return h('span', { class: 'todo-count' }, text(`${n} items left`))
+      }
+    },
+    TodoFilter = (state) => (
+      h('footer', { class: 'footer' }, [
+        TodoCount(state.todos),
+        h( 'ul', { class: 'filters' }, Object.keys(FILTER).map((key) =>
+          h( 'li', {},
+            h( 'a', {
+              onclick: (state, e) => filterTodo(state, FILTER[key]),
+              class: state.filter === FILTER[key] ? 'selected' : '',
+            }, text(key))
+          )
+        )),
+        (state.todos.filter((t) => t.done).length) > 0 ? (
+          h('button', { class: 'clear-completed', onclick: clearCompleted }, text('Clear completed'))
+        ) : text(''),
+      ])
+    ),
+    TodoItem = (todo) => (
+    h('li', { class: ['todo', { completed: todo.done, editing: todo.editing }] }, [
+      h('div', { class: 'view' }, [
+        h('input', {
+            type: 'checkbox', class: 'toggle',
+            checked: todo.done, onclick: [toggleTodo, todo.id],
+        }),
+        h('label', { ondblclick: (state, e) => editEnterTodo(state, e, todo.id) }, text(todo.value)),
+        h('button', { class: 'destroy', onclick: [removeTodo, todo.id] }, text('')),
+      ]),
+      h('input', {
+        type: 'text',
+        class: 'edit',
+        value: todo.value,
+        onkeyup: (state, e) => {
+          if (e.keyCode === ENTER_KEY) {
+            return editUpdateTodo(state, e, todo.id)
+          }
+          return state
+        },
+        onblur: (state, e) => editUpdateTodo(state, e, todo.id),
+        }),
+      ])
+    ),
+    TodoList = ({ todos, filter }) => (
+      h( 'ul', { class: 'todo-list' }, todos.filter((t) =>
+        (filter === FILTER.Completed) ? t.done : (
+          filter === FILTER.Active ? !t.done : filter === FILTER.All
+        )).map((todo) => TodoItem(todo))
+      )
+    );
+
+    // App
+    const init = {
+      input: '',
+      placeholder: 'What needs to be done?',
+      todos: store.fetch().map((t) => ({...t, editing: false})),
+      filter: FILTER.All,
+    },
+    view = (state) => (
+      h('div', { class: 'container' }, [
+        h('section', { class: 'todoapp' }, [
+          h('header', { class: 'header' }, [h('h1', {}, text('todos'))]),
+          TodoInput(state),
+          h('section', { class: 'main' }, state.todos.filter((t) => !t.done).length > 0 ? TodoToggleAll() : text('')),
+          TodoList({ todos: state.todos, filter: state.filter }),
+          TodoFilter(state),
+        ]),
+        h('footer', { class: 'info' }, [
+          h('p', {}, text('Double-click to edit a todo')),
+          h('p', {}, [h('span', {}, text('Written by ')), h('a', { href: 'https://github.com/hedyhli' }, text('~hedy'))]),
+          h('p', {}, [h('span', {}, text('Part of ')), h('a', { href: 'https://todomvc.com' }, text('TodoMVC'))]),
+        ]),
+      ])
+    ),
+    node = document.getElementById('app');
+
+    app({ init, view, node })
+    </script>
+  </body>
+</html>
