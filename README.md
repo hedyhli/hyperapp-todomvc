@@ -1,6 +1,6 @@
 # Hyperapp • [TodoMVC](http://todomvc.com)
 
-https://raw.githubusercontent.com/hedyhli/hyperapp-todomvc/main/none.png
+<img src="https://raw.githubusercontent.com/hedyhli/hyperapp-todomvc/main/none.png" width=800 />
 
 > The tiny framework for building hypertext applications.
 
